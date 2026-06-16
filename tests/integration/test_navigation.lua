@@ -183,11 +183,12 @@ T['get_header_at_cursor']['matches at exact col_end boundary'] = function()
     { row = 2, col_start = 5, col_end = 10, property = 'file.name' },
   }
 
-  -- Cursor at col 10 (1-indexed), which is 0-indexed col 9
+  -- col_end is exclusive: cursor at col 10 falls outside [5, 10) and should
+  -- not be detected as the header.
   vim.api.nvim_win_set_cursor(0, { 2, 9 })
 
   local result = navigation.get_header_at_cursor(buf)
-  expect.equality(result.property, 'file.name')
+  expect.equality(result, nil)
 end
 
 -- =======================
