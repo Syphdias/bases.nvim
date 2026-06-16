@@ -288,14 +288,11 @@ local function render_to_buffer(buf, dashboard_config, section_data, use_markdow
             for _, header in ipairs(result.headers) do
                 if header.section_index == i and header.property == sort_state.property then
                     local ns = vim.api.nvim_create_namespace('bases_sorted_header')
-                    vim.api.nvim_buf_add_highlight(
-                        buf,
-                        ns,
-                        'BasesSortedHeader',
-                        header.row - 1,
-                        header.col_start - 1,
-                        header.col_end + 2
-                    )
+                    local row0 = header.row - 1
+                    local line = vim.api.nvim_buf_get_lines(buf, row0, row0 + 1, false)[1] or ''
+                    local col_start = base_render.display_to_byte(line, header.col_start)
+                    local col_end = base_render.display_to_byte(line, header.col_end)
+                    vim.api.nvim_buf_add_highlight(buf, ns, 'BasesSortedHeader', row0, col_start, col_end)
                 end
             end
         end

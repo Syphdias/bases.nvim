@@ -3,16 +3,60 @@ local M = {}
 
 local SORT_ICONS = { asc = ' ▲', desc = ' ▼' }
 
+-- Convert a 1-indexed display column to a 0-indexed byte offset within a line.
+function M.display_to_byte(line, display_col_1indexed)
+    if display_col_1indexed <= 1 then
+        return 0
+    end
+    local width = 0
+    for i = 0, vim.fn.strchars(line) - 1 do
+        local char = vim.fn.strcharpart(line, i, 1)
+        width = width + vim.fn.strdisplaywidth(char)
+        if width >= display_col_1indexed then
+            return vim.fn.byteidx(line, i)
+        end
+    end
+    return #line
+end
+
+-- Convert a 0-indexed byte offset within a line to a 1-indexed display column.
+-- Follows the `nvim_win_get_cursor` convention: the returned column is the
+-- position of the character under the cursor (i.e., the cursor sits *before*
+-- the character at `byte_0indexed`, so the column is the display column of
+-- that character). When the byte falls inside a multi-byte character, the
+-- column reported is that of the character containing the byte.
+function M.byte_to_display(line, byte_0indexed)
+    local target = math.max(0, byte_0indexed)
+    local width = 0
+    for i = 0, vim.fn.strchars(line) - 1 do
+        local char = vim.fn.strcharpart(line, i, 1)
+        local char_byte = vim.fn.byteidx(line, i)
+        local char_end = char_byte + #char
+        if char_byte <= target and target < char_end then
+            -- Cursor is inside this character
+            return width + 1
+        end
+        if char_byte > target then
+            -- Cursor is past this character (only possible if the previous
+            -- iteration was inside an earlier char with same byte_start, but
+            -- that's not possible for valid UTF-8; defensive)
+            return width + 1
+        end
+        width = width + vim.fn.strdisplaywidth(char)
+    end
+    return width + 1
+end
+
 ---@class HeaderCellInfo
 ---@field row number 1-indexed line number (2 for unicode, 1 for markdown)
----@field col_start number
----@field col_end number
+---@field col_start number 1-indexed column of first char of text (inclusive)
+---@field col_end number 1-indexed column one past last char of text (exclusive)
 ---@field property string Property name (e.g., "file.name")
 
 ---@class CellInfo
 ---@field row number 1-indexed line number
----@field col_start number 1-indexed column start
----@field col_end number 1-indexed column end
+---@field col_start number 1-indexed column of first char of text (inclusive)
+---@field col_end number 1-indexed column one past last char of text (exclusive)
 ---@field property string Property name (e.g., "note.Person")
 ---@field file_path string Path to source note
 ---@field editable boolean true for note.* properties
@@ -418,11 +462,11 @@ function M.render_unicode_table(properties, entries, sort_state, labels, summari
         local header_text = M.display_name(prop, labels) .. M.get_sort_icon(prop, sort_state)
         table.insert(headers, header_text)
 
-        local cell_start = col + 1  -- Account for space padding
+        local cell_start = col + 2  -- Skip left border + left padding space
         table.insert(header_cells, {
             row = header_row,
             col_start = cell_start,
-            col_end = cell_start + widths[i] - 2,  -- Exclude padding
+            col_end = cell_start + display_width(header_text),
             property = prop,
         })
         col = col + widths[i] + 1
@@ -448,7 +492,7 @@ function M.render_unicode_table(properties, entries, sort_state, labels, summari
             local text, path = M.value_text(val, false)
             table.insert(cell_texts, text)
 
-            local cell_start = col + 1  -- Account for space padding
+            local cell_start = col + 2  -- Skip left border + left padding space
 
             -- Track cell for editing
             table.insert(cells, {
@@ -529,11 +573,11 @@ function M.render_markdown_table(properties, entries, sort_state, labels, summar
         local header_text = M.display_name(prop, labels) .. M.get_sort_icon(prop, sort_state)
         table.insert(headers, header_text)
 
-        local cell_start = col + 1  -- Account for space padding
+        local cell_start = col + 2  -- Skip left pipe + left padding space
         table.insert(header_cells, {
             row = header_row,
             col_start = cell_start,
-            col_end = cell_start + widths[i] - 2,  -- Exclude padding
+            col_end = cell_start + display_width(header_text),
             property = prop,
         })
         col = col + widths[i] + 1
@@ -559,7 +603,7 @@ function M.render_markdown_table(properties, entries, sort_state, labels, summar
             local text, path = M.value_text(val, true)
             table.insert(cell_texts, text)
 
-            local cell_start = col + 1  -- Account for space padding
+            local cell_start = col + 2  -- Skip left pipe + left padding space
 
             -- Track cell for editing
             table.insert(cells, {
@@ -688,14 +732,11 @@ function M.highlight_links(buf, links)
     vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 
     for _, link in ipairs(links) do
-        vim.api.nvim_buf_add_highlight(
-            buf,
-            ns,
-            'BasesLink',
-            link.row - 1,  -- 0-indexed
-            link.col_start - 1,  -- 0-indexed
-            link.col_end - 1
-        )
+        local row0 = link.row - 1
+        local line = vim.api.nvim_buf_get_lines(buf, row0, row0 + 1, false)[1] or ''
+        local col_start = M.display_to_byte(line, link.col_start)
+        local col_end = M.display_to_byte(line, link.col_end)
+        vim.api.nvim_buf_add_highlight(buf, ns, 'BasesLink', row0, col_start, col_end)
     end
 end
 
@@ -727,14 +768,11 @@ function M.highlight_sorted_header(buf, headers, sort_state)
 
     for _, header in ipairs(headers) do
         if header.property == sort_state.property then
-            vim.api.nvim_buf_add_highlight(
-                buf,
-                ns,
-                'BasesSortedHeader',
-                header.row - 1,  -- 0-indexed
-                header.col_start - 1,  -- 0-indexed
-                header.col_end + 2  -- Include sort icon
-            )
+            local row0 = header.row - 1
+            local line = vim.api.nvim_buf_get_lines(buf, row0, row0 + 1, false)[1] or ''
+            local col_start = M.display_to_byte(line, header.col_start)
+            local col_end = M.display_to_byte(line, header.col_end)
+            vim.api.nvim_buf_add_highlight(buf, ns, 'BasesSortedHeader', row0, col_start, col_end)
             break
         end
     end

@@ -1,6 +1,18 @@
 -- Dashboard navigation - section jumping and merged link/cell navigation
 local M = {}
 
+---Get the current cursor position as a 1-indexed (row, display_col) pair.
+---@return number row 1-indexed line number
+---@return number col 1-indexed display column
+local function get_cursor_display_pos()
+    local render = require('bases.render')
+    local cursor = vim.api.nvim_win_get_cursor(0)
+    local row = cursor[1] -- 1-indexed
+    local line = vim.api.nvim_get_current_line()
+    local col = render.byte_to_display(line, cursor[2])
+    return row, col
+end
+
 ---Get section starts from buffer
 ---@param buf number Buffer handle
 ---@return number[]|nil Section start lines (1-indexed)
@@ -18,7 +30,7 @@ function M.get_current_section(buf)
     end
 
     local cursor = vim.api.nvim_win_get_cursor(0)
-    local row = cursor[1]  -- 1-indexed
+    local row = cursor[1] -- 1-indexed
 
     -- Find which section contains the cursor
     local current_section = 1
@@ -90,9 +102,7 @@ function M.get_link_at_cursor(buf)
         return nil
     end
 
-    local cursor = vim.api.nvim_win_get_cursor(0)
-    local row = cursor[1]
-    local col = cursor[2] + 1  -- Convert to 1-indexed
+    local row, col = get_cursor_display_pos()
 
     for _, link in ipairs(links) do
         if link.row == row and col >= link.col_start and col < link.col_end then
@@ -112,9 +122,7 @@ function M.get_cell_at_cursor(buf)
         return nil
     end
 
-    local cursor = vim.api.nvim_win_get_cursor(0)
-    local row = cursor[1]
-    local col = cursor[2] + 1  -- Convert to 1-indexed
+    local row, col = get_cursor_display_pos()
 
     for _, cell in ipairs(cells) do
         if cell.row == row and col >= cell.col_start and col < cell.col_end then
@@ -134,12 +142,10 @@ function M.get_header_at_cursor(buf)
         return nil
     end
 
-    local cursor = vim.api.nvim_win_get_cursor(0)
-    local row = cursor[1]
-    local col = cursor[2] + 1  -- Convert to 1-indexed
+    local row, col = get_cursor_display_pos()
 
     for _, header in ipairs(headers) do
-        if header.row == row and col >= header.col_start and col <= header.col_end then
+        if header.row == row and col >= header.col_start and col < header.col_end then
             return header
         end
     end
@@ -157,9 +163,7 @@ local function find_adjacent_link(buf, direction)
         return nil
     end
 
-    local cursor = vim.api.nvim_win_get_cursor(0)
-    local row = cursor[1]
-    local col = cursor[2] + 1
+    local row, col = get_cursor_display_pos()
 
     -- Sort links by position
     local sorted = vim.deepcopy(links)
@@ -197,7 +201,9 @@ end
 function M.next_link(buf)
     local link = find_adjacent_link(buf, 1)
     if link then
-        vim.api.nvim_win_set_cursor(0, { link.row, link.col_start - 1 })
+        local line = vim.api.nvim_buf_get_lines(0, link.row - 1, link.row, false)[1] or ''
+        local byte = require('bases.render').display_to_byte(line, link.col_start)
+        vim.api.nvim_win_set_cursor(0, { link.row, byte })
     else
         vim.notify('No links in this dashboard', vim.log.levels.INFO)
     end
@@ -208,7 +214,9 @@ end
 function M.prev_link(buf)
     local link = find_adjacent_link(buf, -1)
     if link then
-        vim.api.nvim_win_set_cursor(0, { link.row, link.col_start - 1 })
+        local line = vim.api.nvim_buf_get_lines(0, link.row - 1, link.row, false)[1] or ''
+        local byte = require('bases.render').display_to_byte(line, link.col_start)
+        vim.api.nvim_win_set_cursor(0, { link.row, byte })
     else
         vim.notify('No links in this dashboard', vim.log.levels.INFO)
     end
@@ -276,7 +284,7 @@ function M.toggle_sort(buf, header)
     elseif current.direction == 'asc' then
         new_state = { property = header.property, direction = 'desc' }
     else
-        new_state = {}  -- Clear sort
+        new_state = {} -- Clear sort
     end
 
     sort_states[section_index] = new_state
