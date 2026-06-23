@@ -1113,4 +1113,33 @@ T['values_equal']['different types non-numeric'] = function()
   expect.equality(result, false)
 end
 
+T['values_equal']['string with wiki-link brackets equals plain string'] = function()
+  -- "[[J.R.R. Tolkien]]" should compare equal to "J.R.R. Tolkien" so
+  -- that frontmatter values with wikilinks match plain string values
+  -- used in `this` context.
+  local result = methods.values_equal(types.string('[[J.R.R. Tolkien]]'), types.string('J.R.R. Tolkien'))
+  expect.equality(result, true)
+end
+
+T['values_equal']['string with display-text wiki-link uses the link target'] = function()
+  -- "[[link|display]]" should match "link" (the target), not "display".
+  local result = methods.values_equal(types.string('[[J.R.R. Tolkien|Tolkien]]'), types.string('J.R.R. Tolkien'))
+  expect.equality(result, true)
+end
+
+T['values_equal']['string matches link value or path'] = function()
+  -- A link's value is the display name, path is the underlying target.
+  -- A plain string should match either.
+  local link = types.link('people/J.R.R. Tolkien.md', 'J.R.R. Tolkien')
+  local str = types.string('J.R.R. Tolkien')
+  expect.equality(methods.values_equal(str, link), true)
+end
+
+T['values_equal']['string with wiki-link brackets matches link path'] = function()
+  -- "[[some/path]]" should match a link whose path ends in "some/path".
+  local link = types.link('folder/some/path', 'some/path')
+  local str = types.string('[[some/path]]')
+  expect.equality(methods.values_equal(str, link), true)
+end
+
 return T

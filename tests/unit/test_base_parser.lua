@@ -1018,4 +1018,174 @@ views:
   expect.equality(config.views[1].order[3], 'formula.total')
 end
 
+-- =======================
+-- find_view_index
+-- =======================
+
+T['find_view_index'] = new_set()
+
+T['find_view_index']['returns 0-based index for first view by name'] = function()
+  local yaml = [[
+views:
+  - name: First View
+    type: table
+  - name: Second View
+    type: table
+  - name: Third View
+    type: table
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, 'First View')
+  expect.equality(view_err, nil)
+  expect.equality(index, 0)
+end
+
+T['find_view_index']['returns correct index for middle view by name'] = function()
+  local yaml = [[
+views:
+  - name: First View
+    type: table
+  - name: Second View
+    type: table
+  - name: Third View
+    type: table
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, 'Second View')
+  expect.equality(view_err, nil)
+  expect.equality(index, 1)
+end
+
+T['find_view_index']['returns correct index for last view by name'] = function()
+  local yaml = [[
+views:
+  - name: First View
+    type: table
+  - name: Second View
+    type: table
+  - name: Third View
+    type: table
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, 'Third View')
+  expect.equality(view_err, nil)
+  expect.equality(index, 2)
+end
+
+T['find_view_index']['returns error for non-existent view name'] = function()
+  local yaml = [[
+views:
+  - name: First View
+    type: table
+  - name: Second View
+    type: table
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, 'Non Existent')
+  expect.equality(index, nil)
+  expect.no_equality(view_err, nil)
+  expect.equality(view_err:match('not found') ~= nil, true)
+end
+
+T['find_view_index']['handles views with default names'] = function()
+  local yaml = [[
+views:
+  - type: table
+  - type: cards
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, 'View 1')
+  expect.equality(view_err, nil)
+  expect.equality(index, 0)
+  index, view_err = base_parser.find_view_index(config, 'View 2')
+  expect.equality(view_err, nil)
+  expect.equality(index, 1)
+end
+
+T['find_view_index']['returns error for nil config'] = function()
+  local index, view_err = base_parser.find_view_index(nil, 'Some View')
+  expect.equality(index, nil)
+  expect.no_equality(view_err, nil)
+end
+
+T['find_view_index']['returns error for non-table config'] = function()
+  local index, view_err = base_parser.find_view_index('not a table', 'Some View')
+  expect.equality(index, nil)
+  expect.no_equality(view_err, nil)
+end
+
+T['find_view_index']['returns error for nil view_name'] = function()
+  local yaml = [[
+views:
+  - name: Test View
+    type: table
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, nil)
+  expect.equality(index, nil)
+  expect.no_equality(view_err, nil)
+end
+
+T['find_view_index']['returns error for non-string view_name'] = function()
+  local yaml = [[
+views:
+  - name: Test View
+    type: table
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, 42)
+  expect.equality(index, nil)
+  expect.no_equality(view_err, nil)
+end
+
+T['find_view_index']['handles single view'] = function()
+  local yaml = [[
+views:
+  - name: Only View
+    type: table
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, 'Only View')
+  expect.equality(view_err, nil)
+  expect.equality(index, 0)
+end
+
+T['find_view_index']['is case sensitive'] = function()
+  local yaml = [[
+views:
+  - name: My View
+    type: table
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, 'my view')
+  expect.equality(index, nil)
+  expect.no_equality(view_err, nil)
+  index, view_err = base_parser.find_view_index(config, 'MY VIEW')
+  expect.equality(index, nil)
+  expect.no_equality(view_err, nil)
+end
+
+T['find_view_index']['error message includes the requested view name'] = function()
+  local yaml = [[
+views:
+  - name: Foo
+    type: table
+]]
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+  local index, view_err = base_parser.find_view_index(config, 'Bar')
+  expect.equality(index, nil)
+  expect.no_equality(view_err, nil)
+  expect.equality(view_err:match("'Bar'") ~= nil, true)
+end
+
 return T
