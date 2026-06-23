@@ -734,4 +734,86 @@ views:
   end
 end
 
+T['execute']['bare `this` resolves to the embedding file basename'] = function()
+  -- When a filter references `this` without a property (e.g.
+  -- `list(authors).contains(this)`), the engine should treat it as
+  -- the embedding file's basename. Combined with the wiki-link
+  -- stripping in `values_equal`, this lets frontmatter values like
+  -- `[[J.R.R. Tolkien]]` be matched against a plain string
+  -- `J.R.R. Tolkien` used as the `this` context for the embedding
+  -- file. This is the convention used by the demo vault's
+  -- Content.base#Author view.
+  local notes = {
+    helpers.make_note_data({
+      path = 'books/fellowship.md',
+      frontmatter = { authors = { '[[J.R.R. Tolkien]]' } },
+    }),
+    helpers.make_note_data({
+      path = 'books/return.md',
+      frontmatter = { authors = { '[[J.R.R. Tolkien]]' } },
+    }),
+    helpers.make_note_data({
+      path = 'books/lion.md',
+      frontmatter = { authors = { '[[C.S. Lewis]]' } },
+    }),
+    helpers.make_note_data({
+      path = 'books/hobbit.md',
+      frontmatter = { authors = {} },
+    }),
+  }
+  local index = helpers.make_note_index(notes)
+
+  local yaml = [[
+filters: "list(note.authors).contains(this)"
+views:
+  - type: table
+    name: By Author
+]]
+
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+
+  local this_file = helpers.make_note_data({
+    path = 'books/J.R.R. Tolkien.md',
+    basename = 'J.R.R. Tolkien',
+  })
+
+  local result = query_engine.execute(config, index, 0, this_file)
+
+  expect.equality(#result.entries, 2)
+
+  local basenames = {}
+  for _, entry in ipairs(result.entries) do
+    table.insert(basenames, entry.file.basename)
+  end
+  table.sort(basenames)
+
+  expect.equality(basenames[1], 'fellowship')
+  expect.equality(basenames[2], 'return')
+end
+
+T['execute']['bare `this` returns null when no this_file is set'] = function()
+  local notes = {
+    helpers.make_note_data({
+      path = 'books/fellowship.md',
+      frontmatter = { authors = { '[[J.R.R. Tolkien]]' } },
+    }),
+  }
+  local index = helpers.make_note_index(notes)
+
+  local yaml = [[
+filters: "list(note.authors).contains(this)"
+views:
+  - type: table
+    name: By Author
+]]
+
+  local config, err = base_parser.parse_string(yaml)
+  expect.equality(err, nil)
+
+  -- No this_file passed → `this` is null → no rows match
+  local result = query_engine.execute(config, index, 0, nil)
+  expect.equality(#result.entries, 0)
+end
+
 return T

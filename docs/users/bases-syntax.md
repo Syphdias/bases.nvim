@@ -70,11 +70,19 @@ Use wikilink syntax to embed an entire base file:
 ![[projects.base]]
 ```
 
-To display a specific view by name:
+To display a specific view by name, append `#<view-name>` to the embed:
 
 ```markdown
 ![[projects.base#Active Projects]]
 ```
+
+The view name must match the `name:` field of one of the views in the
+`views:` list of the base file. Matching is case-sensitive. If the named
+view is not found in the base, the embed is rendered as an inline error
+(`Error: View 'Foo' not found in projects.base`) instead of a table.
+
+If the embed has no `#view` suffix, the first view in the `views:` list is
+used.
 
 ### Code Block Embed
 

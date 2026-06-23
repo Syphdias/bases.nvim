@@ -474,6 +474,22 @@ function M.values_equal(left, right)
 	end
 
 	if left.type == right.type then
+		-- If both are strings, compare after stripping wiki-link brackets.
+		-- This lets frontmatter values like "[[J.R.R. Tolkien]]" compare
+		-- equal to a plain string "J.R.R. Tolkien" used elsewhere (e.g.
+		-- as the `this` context for `list(authors).contains(this)`).
+		-- The display-text form `[[link|display]]` is matched FIRST so the
+		-- more specific pattern wins; otherwise the plain `[[...]]` form
+		-- would greedy-match `link|display` and leave the pipes in place.
+		if left.type == "string" then
+			local l = left.value
+			local r = right.value
+			l = l:gsub("^%[%[([^%]]+)%|([^%]]+)%]%]$", "%1") -- [[link|display]]
+			l = l:gsub("^%[%[([^%]]+)%]%]$", "%1")
+			r = r:gsub("^%[%[([^%]]+)%|([^%]]+)%]%]$", "%1")
+			r = r:gsub("^%[%[([^%]]+)%]%]$", "%1")
+			return l == r
+		end
 		return left.value == right.value
 	end
 
@@ -482,6 +498,19 @@ function M.values_equal(left, right)
 	local rn = types.to_number(right)
 	if ln and rn then
 		return ln == rn
+	end
+
+	-- Cross-type comparison: string vs link.
+	-- A link's `value` is the display name (or path when no display is set);
+	-- `path` is the underlying wiki-link target. Match the string against
+	-- either, so frontmatter strings compare equal to links regardless of
+	-- which alias the link used.
+	if left.type == "string" and right.type == "link" then
+		local s = left.value:gsub("^%[%[([^%]]+)%]%]$", "%1"):gsub("^%[%[([^%]]+)%|([^%]]+)%]%]$", "%1")
+		return s == right.value or s == right.path
+	elseif left.type == "link" and right.type == "string" then
+		local s = right.value:gsub("^%[%[([^%]]+)%]%]$", "%1"):gsub("^%[%[([^%]]+)%|([^%]]+)%]%]$", "%1")
+		return s == left.value or s == left.path
 	end
 
 	return false

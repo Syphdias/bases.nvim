@@ -336,7 +336,7 @@ end)
 
 ---
 
-### engine.query(base_path, view_index, callback)
+### engine.query(base_path, view_index, callback, this_file_path?)
 
 Execute a query against a .base file.
 
@@ -346,6 +346,11 @@ Execute a query against a .base file.
 - `callback` (function) - `callback(err, result)` where:
   - `err` (string|nil) - Error message or nil on success
   - `result` (SerializedResult|nil) - Query result data
+- `this_file_path` (string|nil, optional) - Vault-relative path of the
+  embedding file. Resolved to a `NoteData` and made available to filter
+  and formula expressions via the `this` namespace (e.g. `this.file.name`).
+  Pass `nil` if the embed has no containing file (e.g. standalone .base
+  buffers).
 
 **Example:**
 ```lua
@@ -524,6 +529,47 @@ engine.shutdown()
 - Stops file watcher
 - Saves NoteIndex cache to disk
 - Resets initialization state
+
+---
+
+## Base Parser API
+
+Source: `lua/bases/engine/base_parser.lua`
+
+The base parser module exposes helpers for working with parsed `.base`
+QueryConfig structures, in addition to the `parse` / `parse_string` functions
+used by the engine.
+
+### base_parser.find_view_index(query_config, view_name)
+
+Look up a view by name in a parsed QueryConfig and return its 0-based
+index. The match is exact and case-sensitive. Used by the inline embed
+renderer to resolve `![[name.base#View Name]]` style embeds.
+
+**Parameters:**
+- `query_config` (QueryConfig) - Parsed base config (e.g. from `parse`)
+- `view_name` (string) - Name of the view to look up (matches `view.name`)
+
+**Returns:**
+- On success: `(index, nil)` where `index` is a 0-based integer
+- On failure: `(nil, error_message)` where `error_message` describes the
+  reason (e.g. `"View 'Foo' not found"`, `"View name is nil"`,
+  `"Query config must be a table, got string"`)
+
+**Example:**
+```lua
+local base_parser = require('bases.engine.base_parser')
+local config, err = base_parser.parse('/path/to/projects.base')
+if not config then
+    error(err)
+end
+
+local idx, err = base_parser.find_view_index(config, 'Active Projects')
+if not idx then
+    error('Unknown view: ' .. err)
+end
+print('View index:', idx)
+```
 
 ## Buffer-Local Data
 

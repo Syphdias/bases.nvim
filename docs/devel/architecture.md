@@ -91,7 +91,7 @@ The rendering pipeline transforms SerializedResult data into buffer content with
 | `views.lua` | View selection picker, view switching, sort state clearing |
 | `source_edit.lua` | Edit `.base` source files in split window |
 | `debug.lua` | Debug overlay showing raw API data, links, cells, sort state |
-| `inline/detect.lua` | Scan buffers for `![[base.base]]` and ` ```base ` embeds |
+| `inline/detect.lua` | Scan buffers for `![[base.base]]`, `![[base.base#View]]`, and ` ```base ` embeds |
 | `inline/render.lua` | Render embeds as virtual lines using extmarks |
 | `inline/navigation.lua` | Link/cell navigation within virtual line embeds |
 | `inline/source_edit.lua` | Edit inline code block source |

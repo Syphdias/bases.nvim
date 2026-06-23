@@ -376,4 +376,41 @@ function M.parse(file_path)
 	return M.parse_string(content)
 end
 
+---Find the 0-based index of a view by name in a QueryConfig
+---The match is exact and case-sensitive. Returns the index of the first
+---view whose `name` field equals `view_name`.
+---@param query_config QueryConfig
+---@param view_name string
+---@return number|nil, string|nil Returns 0-based index on success, or nil + error message on failure
+function M.find_view_index(query_config, view_name)
+	if query_config == nil then
+		return nil, 'Query config is nil'
+	end
+
+	if type(query_config) ~= 'table' then
+		return nil, 'Query config must be a table, got ' .. type(query_config)
+	end
+
+	if view_name == nil then
+		return nil, 'View name is nil'
+	end
+
+	if type(view_name) ~= 'string' then
+		return nil, 'View name must be a string, got ' .. type(view_name)
+	end
+
+	local views = query_config.views
+	if not views or #views == 0 then
+		return nil, "No views defined in query config"
+	end
+
+	for i, view in ipairs(views) do
+		if view.name == view_name then
+			return i - 1, nil
+		end
+	end
+
+	return nil, "View '" .. view_name .. "' not found"
+end
+
 return M

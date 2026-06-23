@@ -103,6 +103,15 @@ function Evaluator:eval_identifier(node)
 		return types.file(self.note_data)
 	end
 
+	-- Handle bare `this` (the embedding file's context). A bare `this`
+	-- with no property is treated as the embedding file's basename,
+	-- matching the convention used by demo bases like
+	-- `list(authors).contains(this)` to filter notes whose frontmatter
+	-- links resolve to the current page.
+	if name == "this" then
+		return self:resolve_this_property("")
+	end
+
 	-- Split on first dot to get namespace
 	local namespace, rest = name:match("^([^.]+)%.(.+)$")
 
@@ -211,10 +220,22 @@ function Evaluator:resolve_formula(formula_name)
 end
 
 ---Resolve a this namespace property
----@param property string
+---@param property string|nil
 ---@return TypedValue
 function Evaluator:resolve_this_property(property)
-	if not self.this_file or not self.this_file.frontmatter then
+	if not self.this_file then
+		return types.null()
+	end
+
+	-- If no property specified, return the this_file's basename. This is
+	-- a convention that lets filters like `list(authors).contains(this)`
+	-- work for "show rows where a wikilink target matches the embedding
+	-- file's basename".
+	if property == nil or property == "" then
+		return types.string(self.this_file.basename or "")
+	end
+
+	if not self.this_file.frontmatter then
 		return types.null()
 	end
 

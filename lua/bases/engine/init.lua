@@ -108,7 +108,8 @@ end
 ---@param base_path string -- path to the .base file (absolute or vault-relative)
 ---@param view_index number -- 0-based view index
 ---@param callback function -- callback(err, result): err is string|nil, result is SerializedResult|nil
-function M.query(base_path, view_index, callback)
+---@param this_file_path string|nil -- vault-relative path of the embedding file (for `this` context)
+function M.query(base_path, view_index, callback, this_file_path)
     vim.schedule(function()
         -- Validate initialization
         if not initialized then
@@ -125,12 +126,18 @@ function M.query(base_path, view_index, callback)
                 error(parse_err or "Failed to parse base file")
             end
 
-            -- Execute query (this_file is nil for now)
+            -- Resolve this_file_path to NoteData if provided
+            local this_file = nil
+            if this_file_path and note_index then
+                this_file = note_index:get(this_file_path)
+            end
+
+            -- Execute query
             local serialized_result = query_engine.execute(
                 query_config,
                 note_index,
                 view_index,
-                nil -- this_file
+                this_file
             )
 
             return serialized_result
