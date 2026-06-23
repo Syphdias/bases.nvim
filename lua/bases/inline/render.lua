@@ -349,18 +349,6 @@ function M.apply_codeblock_error(buf, embed, error_msg)
     return extmark_id
 end
 
----Clear virtual lines for an embed
----@param buf number Buffer handle
----@param embed table Embed info with extmark_id
-function M.clear_embed(buf, embed)
-    if not embed.extmark_id then
-        return
-    end
-
-    local ns = get_namespace()
-    pcall(vim.api.nvim_buf_del_extmark, buf, ns, embed.extmark_id)
-end
-
 ---Clear all inline embeds from buffer
 ---@param buf number Buffer handle
 function M.clear_all(buf)
@@ -368,16 +356,6 @@ function M.clear_all(buf)
     vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
     local conceal_ns = get_conceal_namespace()
     vim.api.nvim_buf_clear_namespace(buf, conceal_ns, 0, -1)
-end
-
----Get the number of virtual lines for an embed
----@param embed table Embed info with data
----@return number Number of virtual lines
-function M.get_virtual_line_count(embed)
-    if not embed.data or not embed.data.lines then
-        return 0
-    end
-    return #embed.data.lines
 end
 
 return M
