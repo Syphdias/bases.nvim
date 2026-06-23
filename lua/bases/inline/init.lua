@@ -398,14 +398,6 @@ function M.refresh_buffer(buf, opts)
     M.render_buffer(buf)
 end
 
----Get embed at cursor position
----@param buf number Buffer handle
----@return table|nil Embed info if cursor is on an embed line
-function M.get_embed_at_cursor(buf)
-    local nav = require('bases.inline.navigation')
-    return nav.get_embed_context(buf)
-end
-
 ---Setup autocmds for markdown files
 function M.setup()
     local bases = require('bases')

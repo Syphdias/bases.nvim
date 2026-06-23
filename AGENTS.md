@@ -63,8 +63,6 @@ Run `:checkhealth bases` after loading the plugin.
 - **No external runtime deps.** YAML parsing and expression evaluation are
   custom (`lua/bases/engine/yaml.lua`, `lua/bases/engine/expr/`). Do not add
   luarocks or curl dependencies.
-- **`lua/bases/api.lua` is dead code** (HTTP client replaced by native engine).
-  It is not required anywhere. Don't extend it.
 
 ## Test conventions (the easy-to-miss parts)
 
