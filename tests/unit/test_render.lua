@@ -68,104 +68,119 @@ end
 T['value_text'] = new_set()
 
 T['value_text']['nil value'] = function()
-  local text, path = render.value_text(nil)
+  local text, links = render.value_text(nil)
   expect.equality(text, '')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['null type'] = function()
-  local text, path = render.value_text({ type = 'null' })
+  local text, links = render.value_text({ type = 'null' })
   expect.equality(text, '')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['primitive string'] = function()
-  local text, path = render.value_text({ type = 'primitive', value = 'active' })
+  local text, links = render.value_text({ type = 'primitive', value = 'active' })
   expect.equality(text, 'active')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['primitive number'] = function()
-  local text, path = render.value_text({ type = 'primitive', value = 42 })
+  local text, links = render.value_text({ type = 'primitive', value = 42 })
   expect.equality(text, '42')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['primitive number decimal'] = function()
-  local text, path = render.value_text({ type = 'primitive', value = 3.14 })
+  local text, links = render.value_text({ type = 'primitive', value = 3.14 })
   expect.equality(text, '3.14')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['primitive boolean true'] = function()
-  local text, path = render.value_text({ type = 'primitive', value = true })
+  local text, links = render.value_text({ type = 'primitive', value = true })
   expect.equality(text, 'Yes')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['primitive boolean false'] = function()
-  local text, path = render.value_text({ type = 'primitive', value = false })
+  local text, links = render.value_text({ type = 'primitive', value = false })
   expect.equality(text, 'No')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['primitive nil value'] = function()
-  local text, path = render.value_text({ type = 'primitive', value = nil })
+  local text, links = render.value_text({ type = 'primitive', value = nil })
   expect.equality(text, '')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
-T['value_text']['link extracts from brackets'] = function()
-  local text, path = render.value_text({ type = 'link', value = '[[alpha]]', path = 'projects/alpha.md' })
+T['value_text']['link shows inner text with embedded link'] = function()
+  local text, links = render.value_text({ type = 'link', value = '[[alpha]]', path = 'projects/alpha.md' })
   expect.equality(text, 'alpha')
-  expect.equality(path, 'projects/alpha.md')
+  expect.equality(#links, 1)
+  expect.equality(links[1].path, 'projects/alpha.md')
+  expect.equality(links[1].offset, 1)
+  expect.equality(links[1].length, #('alpha'))
 end
 
-T['value_text']['link with keep_brackets'] = function()
-  local text, path = render.value_text({ type = 'link', value = '[[alpha]]', path = 'projects/alpha.md' }, true)
-  expect.equality(text, '[[alpha]]')
-  expect.equality(path, 'projects/alpha.md')
+T['value_text']['link keep_brackets is now no-op'] = function()
+  local text_default, links_default = render.value_text({ type = 'link', value = '[[alpha]]', path = 'projects/alpha.md' })
+  local text_keep, links_keep = render.value_text({ type = 'link', value = '[[alpha]]', path = 'projects/alpha.md' }, true)
+  expect.equality(text_default, text_keep)
+  expect.equality(text_default, 'alpha')
+  expect.equality(#links_default, 1)
+  expect.equality(#links_keep, 1)
+  expect.equality(links_default[1].path, links_keep[1].path)
 end
 
-T['value_text']['link with display text'] = function()
-  local text, path = render.value_text({ type = 'link', value = '[[projects/alpha|Alpha Project]]', path = 'projects/alpha.md' })
-  expect.equality(text, 'projects/alpha|Alpha Project')
-  expect.equality(path, 'projects/alpha.md')
+T['value_text']['link with display text shows only display portion'] = function()
+  -- Engine strips path|Display into val.path + [[Display]] before serialization.
+  -- The renderer just extracts the inner content of [[...]].
+  local text, links = render.value_text({ type = 'link', value = '[[Alpha Project]]', path = 'projects/alpha.md' })
+  expect.equality(text, 'Alpha Project')
+  expect.equality(#links, 1)
+  expect.equality(links[1].path, 'projects/alpha.md')
+  expect.equality(links[1].offset, 1)
+  expect.equality(links[1].length, #('Alpha Project'))
 end
 
-T['value_text']['link with keep_brackets and display text'] = function()
-  local text, path = render.value_text({ type = 'link', value = '[[projects/alpha|Alpha]]', path = 'projects/alpha.md' }, true)
-  expect.equality(text, '[[projects/alpha|Alpha]]')
-  expect.equality(path, 'projects/alpha.md')
+T['value_text']['link keep_brackets with display text is also no-op'] = function()
+  local text, links = render.value_text({ type = 'link', value = '[[Alpha Project]]', path = 'projects/alpha.md' }, true)
+  expect.equality(text, 'Alpha Project')
+  expect.equality(#links, 1)
 end
 
 T['value_text']['link with no brackets fallback'] = function()
-  local text, path = render.value_text({ type = 'link', value = 'plain text', path = 'note.md' })
+  local text, links = render.value_text({ type = 'link', value = 'plain text', path = 'note.md' })
   expect.equality(text, 'plain text')
-  expect.equality(path, 'note.md')
+  expect.equality(#links, 1)
+  expect.equality(links[1].path, 'note.md')
+  expect.equality(links[1].offset, 1)
+  expect.equality(links[1].length, #('plain text'))
 end
 
 T['value_text']['date returns formatted string'] = function()
   -- 2025-01-15 00:00:00 UTC
   local timestamp_ms = 1736899200000
-  local text, path = render.value_text({ type = 'date', value = timestamp_ms, iso = '2025-01-15' })
+  local text, links = render.value_text({ type = 'date', value = timestamp_ms, iso = '2025-01-15' })
   expect.equality(type(text), 'string')
   expect.no_equality(text, '')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['date uses config format'] = function()
   local timestamp_ms = 1736899200000
-  local text, path = render.value_text({ type = 'date', value = timestamp_ms, iso = '2025-01-15' })
+  local text, links = render.value_text({ type = 'date', value = timestamp_ms, iso = '2025-01-15' })
   -- With date_format = '%Y-%m-%d', should produce something like 2025-01-15
   expect.no_equality(text:find('2025', 1, true), nil)
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['list empty'] = function()
-  local text, path = render.value_text({ type = 'list', value = {} })
+  local text, links = render.value_text({ type = 'list', value = {} })
   expect.equality(text, '')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['list with primitives'] = function()
@@ -177,12 +192,12 @@ T['value_text']['list with primitives'] = function()
       { type = 'primitive', value = 'three' },
     },
   }
-  local text, path = render.value_text(list_val)
+  local text, links = render.value_text(list_val)
   expect.equality(text, 'one, two, three')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
-T['value_text']['list with links'] = function()
+T['value_text']['list with links tracks each embedded link'] = function()
   local list_val = {
     type = 'list',
     value = {
@@ -190,12 +205,19 @@ T['value_text']['list with links'] = function()
       { type = 'link', value = '[[beta]]', path = 'beta.md' },
     },
   }
-  local text, path = render.value_text(list_val)
+  local text, links = render.value_text(list_val)
   expect.equality(text, 'alpha, beta')
-  expect.equality(path, nil)
+  expect.equality(#links, 2)
+  expect.equality(links[1].path, 'alpha.md')
+  expect.equality(links[1].offset, 1)
+  expect.equality(links[1].length, #('alpha'))
+  expect.equality(links[2].path, 'beta.md')
+  -- Second link starts after "alpha, " (5 + 2 = 7)
+  expect.equality(links[2].offset, 1 + #('alpha, '))
+  expect.equality(links[2].length, #('beta'))
 end
 
-T['value_text']['list with links keep_brackets'] = function()
+T['value_text']['list keep_brackets is also no-op'] = function()
   local list_val = {
     type = 'list',
     value = {
@@ -203,12 +225,46 @@ T['value_text']['list with links keep_brackets'] = function()
       { type = 'link', value = '[[beta]]', path = 'beta.md' },
     },
   }
-  local text, path = render.value_text(list_val, true)
-  expect.equality(text, '[[alpha]], [[beta]]')
-  expect.equality(path, nil)
+  local text, links = render.value_text(list_val, true)
+  expect.equality(text, 'alpha, beta')
+  expect.equality(#links, 2)
 end
 
-T['value_text']['list with mixed types'] = function()
+T['value_text']['list with link and plain tracks only the link'] = function()
+  local list_val = {
+    type = 'list',
+    value = {
+      { type = 'link', value = '[[qux]]', path = 'qux.md' },
+      { type = 'primitive', value = 'quux' },
+    },
+  }
+  local text, links = render.value_text(list_val)
+  expect.equality(text, 'qux, quux')
+  expect.equality(#links, 1)
+  expect.equality(links[1].path, 'qux.md')
+  expect.equality(links[1].offset, 1)
+  expect.equality(links[1].length, #('qux'))
+  -- 'quux' is plain text, no link entry
+end
+
+T['value_text']['list with plain then link offsets correctly'] = function()
+  local list_val = {
+    type = 'list',
+    value = {
+      { type = 'primitive', value = 'foo' },
+      { type = 'link', value = '[[bar]]', path = 'bar.md' },
+    },
+  }
+  local text, links = render.value_text(list_val)
+  expect.equality(text, 'foo, bar')
+  expect.equality(#links, 1)
+  expect.equality(links[1].path, 'bar.md')
+  -- bar starts after "foo, " (3 + 2 = 5)
+  expect.equality(links[1].offset, 1 + #('foo, '))
+  expect.equality(links[1].length, #('bar'))
+end
+
+T['value_text']['list with mixed types joins primitives only'] = function()
   local list_val = {
     type = 'list',
     value = {
@@ -217,15 +273,15 @@ T['value_text']['list with mixed types'] = function()
       { type = 'primitive', value = true },
     },
   }
-  local text, path = render.value_text(list_val)
+  local text, links = render.value_text(list_val)
   expect.equality(text, '42, text, Yes')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 T['value_text']['image'] = function()
-  local text, path = render.value_text({ type = 'image', value = 'img.png' })
+  local text, links = render.value_text({ type = 'image', value = 'img.png' })
   expect.equality(text, 'img.png')
-  expect.equality(path, nil)
+  expect.equality(#links, 0)
 end
 
 -- =======================
@@ -682,7 +738,7 @@ T['render_markdown_table']['basic table structure'] = function()
   expect.equality(has_summaries, false)
 end
 
-T['render_markdown_table']['keeps link brackets'] = function()
+T['render_markdown_table']['strips link brackets like unicode mode'] = function()
   local properties = { 'note.related' }
   local entries = {
     {
@@ -694,8 +750,10 @@ T['render_markdown_table']['keeps link brackets'] = function()
   }
   local lines, links = render.render_markdown_table(properties, entries, nil, nil, nil)
 
-  -- Markdown mode keeps brackets
-  expect.no_equality(lines[3]:find('[[other]]', 1, true), nil)
+  -- Markdown mode also strips brackets (consistency with unicode mode).
+  -- render-markdown.nvim handles wikilink syntax via markdown's link rendering.
+  expect.no_equality(lines[3]:find('| other ', 1, true), nil)
+  expect.equality(lines[3]:find('[[', 1, true), nil)
 
   -- Links still tracked
   expect.equality(#links, 1)
@@ -733,7 +791,7 @@ T['render_markdown_table']['with summaries'] = function()
   expect.no_equality(lines[4]:find('Sum', 1, true), nil)
 end
 
-T['render_markdown_table']['list with links keeps brackets'] = function()
+T['render_markdown_table']['list with links strips brackets'] = function()
   local properties = { 'note.tags' }
   local list_val = {
     type = 'list',
@@ -745,9 +803,15 @@ T['render_markdown_table']['list with links keeps brackets'] = function()
   local entries = {
     { file = { path = 'a.md' }, values = { ['note.tags'] = list_val } },
   }
-  local lines = render.render_markdown_table(properties, entries, nil, nil, nil)
+  local lines, links = render.render_markdown_table(properties, entries, nil, nil, nil)
 
-  expect.no_equality(lines[3]:find('[[tag1]], [[tag2]]', 1, true), nil)
+  expect.no_equality(lines[3]:find('| tag1, tag2 ', 1, true), nil)
+  expect.equality(lines[3]:find('[[', 1, true), nil)
+
+  -- Both links tracked
+  expect.equality(#links, 2)
+  expect.equality(links[1].path, 'tag1.md')
+  expect.equality(links[2].path, 'tag2.md')
 end
 
 return T

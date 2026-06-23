@@ -35,9 +35,9 @@ local function get_edit_value(cell)
     if raw.type == 'null' then
         return ''
     elseif raw.type == 'link' then
-        -- Return the link text without brackets
-        local text = raw.value or ''
-        return text:match('%[%[([^%]]+)%]%]') or text
+        -- Return the full bracketed link text so users can edit the
+        -- full wikilink syntax (including [[...]]).
+        return raw.value or ''
     elseif raw.type == 'primitive' then
         local v = raw.value
         if v == nil then
@@ -48,14 +48,14 @@ local function get_edit_value(cell)
             return tostring(v)
         end
     elseif raw.type == 'list' then
-        -- For lists, join with commas
+        -- For lists, join with commas. Preserve [[...]] on link items
+        -- so users see and can edit the full wikilink syntax.
         local items = {}
         for _, item in ipairs(raw.value or {}) do
             if item.type == 'primitive' then
                 table.insert(items, tostring(item.value))
             elseif item.type == 'link' then
-                local text = item.value or ''
-                table.insert(items, text:match('%[%[([^%]]+)%]%]') or text)
+                table.insert(items, item.value or '')
             end
         end
         return table.concat(items, ', ')
