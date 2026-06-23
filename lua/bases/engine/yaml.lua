@@ -329,7 +329,36 @@ local function parse_block(lines, start_idx, base_indent)
         -- Check next line to see if it's nested
         if i < #lines then
           local next_line = lines[i + 1]
-          local next_indent = get_indent(strip_comment(next_line))
+          local next_clean = strip_comment(next_line)
+          local next_trimmed = trim(next_clean)
+          local next_indent = get_indent(next_clean)
+          -- Block sequence at the SAME indent as the key (YAML spec allows this):
+          --   authors:
+          --   - "x"
+          --   - "y"
+          -- We collect items directly here because the recursive parse_block
+          -- would otherwise treat the next sibling key as part of the sequence.
+          if next_indent == indent and next_trimmed:match("^%-[%s]") then
+            local seq = {}
+            local j = i + 1
+            while j <= #lines do
+              local jline = strip_comment(lines[j])
+              local jtrim = trim(jline)
+              if not jtrim:match("^%-[%s]") then break end
+              local item_content = trim(jtrim:sub(2))
+              if item_content:match("^%[.*%]$") then
+                table.insert(seq, parse_flow_sequence(item_content))
+              elseif item_content:match("^{.*}$") then
+                table.insert(seq, parse_flow_mapping(item_content))
+              else
+                table.insert(seq, M.parse_value(item_content))
+              end
+              j = j + 1
+            end
+            result[key] = seq
+            i = j
+            goto continue
+          end
           if next_indent > indent then
             local nested, next_i = parse_block(lines, i + 1, indent + 2)
             result[key] = nested

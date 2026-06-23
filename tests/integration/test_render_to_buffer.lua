@@ -213,16 +213,18 @@ T['render markdown']['has separator on line 2'] = function()
   expect.equality(sep, '')
 end
 
-T['render markdown']['keeps wiki-link brackets'] = function()
+T['render markdown']['strips wiki-link brackets like unicode mode'] = function()
   local buf = make_buf()
   local data = make_test_data()
 
   render.render(buf, data, true)
 
   local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-  -- Data rows should keep [[...]] format
-  expect.equality(lines[3]:match('%[%[alpha%]%]') ~= nil, true)
-  expect.equality(lines[4]:match('%[%[beta%]%]') ~= nil, true)
+  -- Data rows now also strip brackets (consistency with unicode mode).
+  -- render-markdown.nvim handles wikilinks via markdown link syntax downstream.
+  expect.no_equality(lines[3]:match(' alpha '), nil)
+  expect.no_equality(lines[4]:match(' beta '), nil)
+  expect.equality(lines[3]:match('%[%['), nil)
 end
 
 T['render markdown']['sets filetype to markdown'] = function()
@@ -318,6 +320,116 @@ T['link tracking']['tracks link text'] = function()
   local links = vim.b[buf].bases_links
   expect.equality(links[1].text, 'alpha')
   expect.equality(links[2].text, 'beta')
+end
+
+T['link tracking']['tracks link inside list cell at correct offset'] = function()
+  local buf = make_buf()
+  local data = {
+    properties = { 'note.refs' },
+    entries = {
+      {
+        file = { path = 'a.md', name = 'a.md', basename = 'a' },
+        values = {
+          ['note.refs'] = {
+            type = 'list',
+            value = {
+              { type = 'link', value = '[[alpha]]', path = 'projects/alpha.md' },
+              { type = 'primitive', value = 'plain' },
+            },
+          },
+        },
+      },
+    },
+  }
+
+  render.render(buf, data, false)
+
+  local links = vim.b[buf].bases_links
+  expect.equality(#links, 1)
+  expect.equality(links[1].path, 'projects/alpha.md')
+
+  -- Verify the link range covers 'alpha' and not ', plain'
+  local line = vim.api.nvim_buf_get_lines(buf, links[1].row - 1, links[1].row, false)[1] or ''
+  local sub_start = render.display_to_byte(line, links[1].col_start) + 1
+  local sub_end = render.display_to_byte(line, links[1].col_end)
+  expect.equality(line:sub(sub_start, sub_end), 'alpha')
+
+  -- The full rendered text should be 'alpha, plain'
+  expect.equality(line:find('alpha, plain', 1, true) ~= nil, true)
+end
+
+T['link tracking']['tracks multiple links in single list cell'] = function()
+  local buf = make_buf()
+  local data = {
+    properties = { 'note.refs' },
+    entries = {
+      {
+        file = { path = 'a.md', name = 'a.md', basename = 'a' },
+        values = {
+          ['note.refs'] = {
+            type = 'list',
+            value = {
+              { type = 'link', value = '[[alpha]]', path = 'projects/alpha.md' },
+              { type = 'link', value = '[[beta]]', path = 'projects/beta.md' },
+            },
+          },
+        },
+      },
+    },
+  }
+
+  render.render(buf, data, false)
+
+  local links = vim.b[buf].bases_links
+  expect.equality(#links, 2)
+  expect.equality(links[1].path, 'projects/alpha.md')
+  expect.equality(links[2].path, 'projects/beta.md')
+
+  -- Both links should be on the same row
+  expect.equality(links[1].row, links[2].row)
+  -- Second link should start after first link + ', '
+  expect.equality(links[2].col_start > links[1].col_end, true)
+end
+
+T['link tracking']['no link entries for plain list items'] = function()
+  local buf = make_buf()
+  local data = {
+    properties = { 'note.tags' },
+    entries = {
+      {
+        file = { path = 'a.md', name = 'a.md', basename = 'a' },
+        values = {
+          ['note.tags'] = {
+            type = 'list',
+            value = {
+              { type = 'primitive', value = 'plain' },
+              { type = 'primitive', value = 'also-plain' },
+            },
+          },
+        },
+      },
+    },
+  }
+
+  render.render(buf, data, false)
+
+  expect.equality(#vim.b[buf].bases_links, 0)
+end
+
+T['link tracking']['single link cell shows inner text only'] = function()
+  local buf = make_buf()
+  local data = make_test_data()
+
+  render.render(buf, data, false)
+
+  -- Cell should display 'alpha' (no brackets), not '[[alpha]]'
+  local links = vim.b[buf].bases_links
+  local line = vim.api.nvim_buf_get_lines(buf, links[1].row - 1, links[1].row, false)[1] or ''
+  local sub_start = render.display_to_byte(line, links[1].col_start) + 1
+  local sub_end = render.display_to_byte(line, links[1].col_end)
+  expect.equality(line:sub(sub_start, sub_end), 'alpha')
+  -- Cell should NOT contain brackets
+  expect.equality(line:find('[[', 1, true) ~= nil, false)
 end
 
 T['link tracking']['tracks link paths'] = function()

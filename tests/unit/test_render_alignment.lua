@@ -339,8 +339,8 @@ T['render_markdown_table positions']['cell col_start points at first text char, 
   -- In markdown mode, line 3 is the data row
   local data_line = lines[3]
   local byte_at_link_start = render.display_to_byte(data_line, links[1].col_start)
-  -- Should be at the first '['
-  expect.equality(char_at_byte(data_line, byte_at_link_start), '[')
+  -- Markdown mode now also strips [[...]], so link starts at 'a' of 'alpha'
+  expect.equality(char_at_byte(data_line, byte_at_link_start), 'a')
 end
 
 return T

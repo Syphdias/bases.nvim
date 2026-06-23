@@ -768,4 +768,46 @@ config:
   expect.equality(result.config.nested.items[1], 'one')
 end
 
+T['parse']['block sequence at parent indent'] = function()
+  -- YAML spec allows a block sequence to start at the same indent as its key.
+  local yaml_str = [[
+authors:
+- "C.S. Lewis"
+year: 1950
+]]
+  local result = yaml.parse(yaml_str)
+  expect.equality(type(result.authors), 'table')
+  expect.equality(#result.authors, 1)
+  expect.equality(result.authors[1], 'C.S. Lewis')
+  expect.equality(result.year, 1950)
+end
+
+T['parse']['multiple block sequence items at parent indent'] = function()
+  local yaml_str = [[
+tags:
+- book
+- chronicles-of-narnia
+genre: Fantasy
+]]
+  local result = yaml.parse(yaml_str)
+  expect.equality(type(result.tags), 'table')
+  expect.equality(#result.tags, 2)
+  expect.equality(result.tags[1], 'book')
+  expect.equality(result.tags[2], 'chronicles-of-narnia')
+  expect.equality(result.genre, 'Fantasy')
+end
+
+T['parse']['block sequence at parent indent with wikilinks'] = function()
+  local yaml_str = [==[
+authors:
+- "[[J.R.R. Tolkien]]"
+year: 1937
+]==]
+  local result = yaml.parse(yaml_str)
+  expect.equality(type(result.authors), 'table')
+  expect.equality(#result.authors, 1)
+  expect.equality(result.authors[1], '[[J.R.R. Tolkien]]')
+  expect.equality(result.year, 1937)
+end
+
 return T

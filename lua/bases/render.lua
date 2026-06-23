@@ -3,6 +3,13 @@ local M = {}
 
 local SORT_ICONS = { asc = ' ▲', desc = ' ▼' }
 
+---Calculate display width of a string (accounting for multi-byte characters)
+---@param str string
+---@return number
+local function display_width(str)
+    return vim.fn.strdisplaywidth(str)
+end
+
 -- Convert a 1-indexed display column to a 0-indexed byte offset within a line.
 function M.display_to_byte(line, display_col_1indexed)
     if display_col_1indexed <= 1 then
@@ -144,45 +151,66 @@ function M.display_name(prop, labels)
     return name:sub(1, 1):upper() .. name:sub(2)
 end
 
----Extract display text from a SerializedValue
+---@class EmbeddedLink
+---@field path string Link target (vault-relative)
+---@field offset number 1-indexed display column where the link text starts within the returned text
+---@field length number Display width of the link text
+
+---Extract display text and embedded link positions from a SerializedValue.
+---The `keep_brackets` parameter is preserved for API stability but is a no-op:
+---both modes strip the [[...]] wrapping and return only the inner display text,
+---with link position information returned in the second value.
 ---@param val table|nil SerializedValue object
----@param keep_brackets boolean|nil Keep [[...]] brackets for links (for markdown mode)
----@return string text Display text
----@return string|nil path File path for links
+---@param keep_brackets boolean|nil Deprecated: no-op. Brackets are always stripped for display.
+---@return string text Display text (without [[...]] brackets)
+---@return EmbeddedLink[] embedded Links positioned within `text`
 function M.value_text(val, keep_brackets)
     if not val then
-        return '', nil
+        return '', {}
     end
 
     if val.type == 'date' then
-        return format_date(val.value, val.iso), nil
+        return format_date(val.value, val.iso), {}
     elseif val.type == 'link' then
-        local text = val.value or ''
-        if keep_brackets then
-            -- Keep the [[...]] format for render-markdown.nvim
-            return text, val.path
-        else
-            -- Extract link text from [[...]] format
-            local link_text = text:match('%[%[([^%]]+)%]%]') or text
-            return link_text, val.path
-        end
+        -- Strip [[...]] wrapper; engine already split path into val.path,
+        -- so the inner content is the display-only portion.
+        local raw = val.value or ''
+        local inner = raw:match('^%[%[(.-)%]%]$') or raw
+        return inner, {
+            { path = val.path, offset = 1, length = display_width(inner) },
+        }
     elseif val.type == 'list' then
-        -- Join list items
-        local items = {}
+        local item_strs, item_link_arrs = {}, {}
         for _, item in ipairs(val.value or {}) do
-            local item_text = M.value_text(item, keep_brackets)
-            table.insert(items, item_text)
+            local s, links = M.value_text(item, keep_brackets)
+            table.insert(item_strs, s)
+            table.insert(item_link_arrs, links)
         end
-        return table.concat(items, ', '), nil
+        local joined, all_links = '', {}
+        for i, s in ipairs(item_strs) do
+            if i > 1 then
+                joined = joined .. ', '
+            end
+            local base = display_width(joined)
+            for _, link in ipairs(item_link_arrs[i] or {}) do
+                table.insert(all_links, {
+                    path = link.path,
+                    offset = base + link.offset,
+                    length = link.length,
+                })
+            end
+            joined = joined .. s
+        end
+        return joined, all_links
     else
         -- Primitive values
         local v = val.value
         if v == nil then
-            return '', nil
+            return '', {}
         elseif type(v) == 'boolean' then
-            return v and 'Yes' or 'No', nil
+            return v and 'Yes' or 'No', {}
         else
-            return tostring(v), nil
+            return tostring(v), {}
         end
     end
 end
@@ -301,13 +329,6 @@ function M.sort_entries(entries, property, direction)
         return compare_values(val_a, val_b, direction)
     end)
     return sorted
-end
-
----Calculate display width of a string (accounting for multi-byte characters)
----@param str string
----@return number
-local function display_width(str)
-    return vim.fn.strdisplaywidth(str)
 end
 
 ---Pad string to width
@@ -489,7 +510,7 @@ function M.render_unicode_table(properties, entries, sort_state, labels, summari
 
         for i, prop in ipairs(properties) do
             local val = entry.values and entry.values[prop]
-            local text, path = M.value_text(val, false)
+            local text, embedded_links = M.value_text(val, false)
             table.insert(cell_texts, text)
 
             local cell_start = col + 2  -- Skip left border + left padding space
@@ -506,14 +527,16 @@ function M.render_unicode_table(properties, entries, sort_state, labels, summari
                 raw_value = val,
             })
 
-            -- Track link position (for navigation)
-            if path then
+            -- Track each embedded link at its absolute column position.
+            -- This works for both top-level links and links inside list cells.
+            for _, link in ipairs(embedded_links) do
+                local abs_col_start = cell_start + link.offset - 1
                 table.insert(links, {
                     row = row_num,
-                    col_start = cell_start,
-                    col_end = cell_start + display_width(text),
-                    path = path,
-                    text = text,
+                    col_start = abs_col_start,
+                    col_end = abs_col_start + link.length,
+                    path = link.path,
+                    text = text:sub(link.offset, link.offset + link.length - 1),
                 })
             end
 
@@ -600,7 +623,7 @@ function M.render_markdown_table(properties, entries, sort_state, labels, summar
 
         for i, prop in ipairs(properties) do
             local val = entry.values and entry.values[prop]
-            local text, path = M.value_text(val, true)
+            local text, embedded_links = M.value_text(val, true)
             table.insert(cell_texts, text)
 
             local cell_start = col + 2  -- Skip left pipe + left padding space
@@ -617,14 +640,15 @@ function M.render_markdown_table(properties, entries, sort_state, labels, summar
                 raw_value = val,
             })
 
-            -- Track link position (for Tab/Shift-Tab navigation)
-            if path then
+            -- Track each embedded link at its absolute column position.
+            for _, link in ipairs(embedded_links) do
+                local abs_col_start = cell_start + link.offset - 1
                 table.insert(links, {
                     row = row_num,
-                    col_start = cell_start,
-                    col_end = cell_start + display_width(text),
-                    path = path,
-                    text = text,
+                    col_start = abs_col_start,
+                    col_end = abs_col_start + link.length,
+                    path = link.path,
+                    text = text:sub(link.offset, link.offset + link.length - 1),
                 })
             end
 
