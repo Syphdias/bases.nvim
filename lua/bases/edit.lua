@@ -12,10 +12,16 @@ function M.get_cell_at_cursor(buf)
 
     local cursor = vim.api.nvim_win_get_cursor(0)
     local row = cursor[1]  -- 1-indexed
-    local col = cursor[2] + 1  -- Convert to 1-indexed
+    local byte_col = cursor[2]  -- 0-indexed byte column
+
+    -- Cell tracking uses display columns, but nvim_win_get_cursor returns
+    -- byte columns. Convert so multi-byte borders (e.g. │) don't shift
+    -- the cursor off a cell.
+    local line = vim.api.nvim_get_current_line()
+    local display_col = require('bases.render').byte_to_display(line, byte_col)
 
     for _, cell in ipairs(cells) do
-        if cell.row == row and col >= cell.col_start and col < cell.col_end then
+        if cell.row == row and display_col >= cell.col_start and display_col < cell.col_end then
             return cell
         end
     end
@@ -23,10 +29,14 @@ function M.get_cell_at_cursor(buf)
     return nil
 end
 
----Get the raw value to edit from a cell
+---Get the raw value to edit from a cell.
+---For link cells, reconstruct the full [[path|display]] syntax when path and
+---display differ (the engine strips the path during serialization, so
+---val.value alone loses information needed for editing). For list cells,
+---items are comma-joined with [[...]] preserved on link items.
 ---@param cell table CellInfo
 ---@return string Text value to edit
-local function get_edit_value(cell)
+function M.get_edit_value(cell)
     local raw = cell.raw_value
     if not raw then
         return ''
@@ -35,9 +45,18 @@ local function get_edit_value(cell)
     if raw.type == 'null' then
         return ''
     elseif raw.type == 'link' then
-        -- Return the full bracketed link text so users can edit the
-        -- full wikilink syntax (including [[...]]).
-        return raw.value or ''
+        local val_str = raw.value or ''
+        local inner = val_str:match('^%[%[(.-)%]%]$') or val_str
+        -- Reconstruct [[path|display]] when the original had a display
+        -- portion (i.e. path != inner and the value was originally wrapped
+        -- in [[...]]). When path == inner, the original was [[inner]] and
+        -- we keep the val.value as-is so the user can edit [[...]] directly.
+        -- When val.value has no brackets, the original wasn't a wikilink —
+        -- return as-is, don't fabricate brackets.
+        if raw.path and inner ~= val_str and raw.path ~= inner then
+            return '[[' .. raw.path .. '|' .. inner .. ']]'
+        end
+        return val_str
     elseif raw.type == 'primitive' then
         local v = raw.value
         if v == nil then
@@ -48,14 +67,23 @@ local function get_edit_value(cell)
             return tostring(v)
         end
     elseif raw.type == 'list' then
-        -- For lists, join with commas. Preserve [[...]] on link items
-        -- so users see and can edit the full wikilink syntax.
+        -- For lists, join with commas. Reconstruct [[path|display]] for
+        -- link items that had a display portion in the original frontmatter
+        -- (so the user can edit both path and display). Items without a
+        -- display portion keep their [[...]] form so the cell render and
+        -- the pre-fill are consistent.
         local items = {}
         for _, item in ipairs(raw.value or {}) do
             if item.type == 'primitive' then
                 table.insert(items, tostring(item.value))
             elseif item.type == 'link' then
-                table.insert(items, item.value or '')
+                local item_val = item.value or ''
+                local item_inner = item_val:match('^%[%[(.-)%]%]$') or item_val
+                if item.path and item_inner ~= item_val and item.path ~= item_inner then
+                    table.insert(items, '[[' .. item.path .. '|' .. item_inner .. ']]')
+                else
+                    table.insert(items, item_val)
+                end
             end
         end
         return table.concat(items, ', ')
@@ -78,7 +106,7 @@ end
 ---@return number win Window handle
 ---@return number edit_buf Buffer handle
 local function create_edit_window(cell, on_save, on_cancel)
-    local current_value = get_edit_value(cell)
+    local current_value = M.get_edit_value(cell)
     local prop_name = property_display_name(cell.property)
 
     -- Calculate window size
@@ -168,7 +196,7 @@ end
 ---Submit edit via direct frontmatter modification
 ---@param buf number Original buffer handle
 ---@param cell table CellInfo
----@param new_value string New value (empty string to delete)
+---@param new_value string New value (empty string to delete; comma-joined for list cells)
 ---@param callback fun(err: string|nil) Callback with error or nil on success
 function M.submit_edit(buf, cell, new_value, callback)
     local engine = require('bases.engine')
@@ -196,6 +224,18 @@ function M.submit_edit(buf, cell, new_value, callback)
     local value = new_value
     if value == '' then
         value = nil
+    elseif cell.raw_value and cell.raw_value.type == 'list' then
+        -- The cell was a list. The edit pre-fill is a comma-joined string;
+        -- parse it back into a list so the frontmatter stays a YAML list
+        -- (not converted to a single string).
+        local items = {}
+        for item in (value .. ','):gmatch('([^,]*),') do
+            local trimmed = item:match('^%s*(.-)%s*$')
+            if trimmed ~= '' then
+                table.insert(items, trimmed)
+            end
+        end
+        value = items
     end
 
     -- Update frontmatter directly
